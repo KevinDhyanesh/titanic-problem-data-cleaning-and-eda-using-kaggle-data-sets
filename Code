@@ -1,0 +1,101 @@
+# === Import Libraries ===
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# === Load Titanic Dataset ===
+titanic_data = pd.read_csv('train.csv')
+
+# === Correlation Heatmap ===
+sns.heatmap(titanic_data.corr(numeric_only=True), cmap="YlGnBu", annot=True)
+plt.title("Correlation Heatmap")
+plt.show()
+
+# === Stratified Train-Test Split based on multiple features ===
+from sklearn.model_selection import StratifiedShuffleSplit
+
+split = StratifiedShuffleSplit(n_splits=1, test_size=0.2)
+for train_indices, test_indices in split.split(titanic_data, titanic_data[["Survived", "Pclass", "Sex"]]):
+    strat_train_set = titanic_data.loc[train_indices]
+    strat_test_set = titanic_data.loc[test_indices]
+
+# === Plot class distributions in train and test sets ===
+plt.subplot(1, 2, 1)
+strat_train_set['Survived'].hist()
+strat_train_set['Pclass'].hist()
+
+plt.subplot(1, 2, 2)
+strat_test_set['Survived'].hist()
+strat_test_set['Pclass'].hist()
+plt.show()
+
+# === Check structure of training data ===
+strat_train_set.info()
+
+# === Define custom transformer: Age Imputer ===
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.impute import SimpleImputer
+
+class AgeImputer(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        imputer = SimpleImputer(strategy="mean")
+        X['Age'] = imputer.fit_transform(X[['Age']])
+        return X
+
+# === Define custom transformer: Feature Encoder for Embarked and Sex ===
+from sklearn.preprocessing import OneHotEncoder
+
+class FeatureEncoder(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        encoder = OneHotEncoder()
+        matrix = encoder.fit_transform(X[['Embarked']]).toarray()
+        column_names = ["C", "S", "Q", "N"]
+        for i in range(len(matrix.T)):
+            X[column_names[i]] = matrix.T[i]
+        matrix = encoder.fit_transform(X[['Sex']]).toarray()
+        column_names = ["Female", "Male"]
+        for i in range(len(matrix.T)):
+            X[column_names[i]] = matrix.T[i]
+        return X
+
+# === Define custom transformer: Drop unused or redundant features ===
+class FeatureDropper(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return X.drop(["Embarked", "Name", "Ticket", "Cabin", "Sex", "N"], axis=1, errors="ignore")
+
+# === Build the preprocessing pipeline ===
+from sklearn.pipeline import Pipeline
+
+pipeline = Pipeline([
+    ("ageimputer", AgeImputer()),
+    ("featureencoder", FeatureEncoder()),
+    ("featuredropper", FeatureDropper())
+])
+
+# === Apply pipeline to training data ===
+strat_train_set = pipeline.fit_transform(strat_train_set)
+
+# === Convert back to DataFrame if needed (optional) ===
+# import warnings
+# warnings.filterwarnings('ignore')  # Optional, to suppress SettingWithCopy warnings
+
+# === Split features and target ===
+from sklearn.preprocessing import StandardScaler
+
+X = strat_train_set.drop(['Survived'], axis=1)
+y = strat_train_set['Survived']
+
+# === Scale the feature data ===
+scaler = StandardScaler()
+X_data = scaler.fit_transform(X)
+y_data = y.to_numpy()
